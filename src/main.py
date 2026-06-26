@@ -24,7 +24,7 @@ class ShortsPipeline:
 
     def __init__(self):
         self.prompt_gen = PromptGenerator()
-        self.looper = VideoLooper(target_duration=12)
+        self.looper = VideoLooper(repeats=4)  # 4x loop = ~20s total
         self.config = self._load_config()
         self.videos_per_day = int(
             os.environ.get("VIDEOS_PER_DAY", 
@@ -74,10 +74,10 @@ class ShortsPipeline:
         for i, concept in enumerate(concepts, 1):
             print(f"\n  [{i}/{len(concepts)}] {concept['title']}")
             try:
-                # 1. Generate video with Kling (9:16, 6 seconds)
+                # 1. Generate video with Kling (9:16, 5 seconds)
                 response = kling.text_to_video(
                     prompt=concept["kling_prompt"],
-                    duration=6,
+                    duration=5,
                     aspect_ratio="9:16",
                 )
                 task_id = response.get("data", {}).get("task_id", "")
@@ -96,7 +96,7 @@ class ShortsPipeline:
                 self._download_video(video_url, local_path)
                 print(f"    💾 Downloaded: {local_path}")
 
-                # 4. Create loop (12 seconds)
+                # 4. Create loop (4x repeat = ~20s at 720x1280 HD)
                 loop_path = self.output_dir / f"loop_{i:02d}.mp4"
                 self.looper.create_loop(str(local_path), str(loop_path))
                 print(f"    🔄 Loop created: {loop_path}")
@@ -167,7 +167,7 @@ class ShortsPipeline:
         """Run the full pipeline."""
         print(f"\n{'='*60}")
         print(f"  🚀 KLING SHORTS BOT - 每日自動化 Shorts 生產線")
-        print(f"  📐 9:16 Vertical | 🔄 Loop 12s | 📤 YouTube Auto-Upload")
+        print(f"  📐 9:16 720x1280 HD | 🔄 4x Loop ~20s | 📤 YouTube Auto-Upload")
         print(f"{'='*60}")
 
         concepts = self.step1_generate_concepts()

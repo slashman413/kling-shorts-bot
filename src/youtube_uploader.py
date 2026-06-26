@@ -64,7 +64,7 @@ class YouTubeUploader:
         title: str,
         description: str,
         tags: list[str],
-        category_id: str = "22",  # 22 = People & Blogs
+        category_id: str = "24",  # 24 = Entertainment (Shorts-friendly)
         privacy_status: str = "public",
     ) -> Optional[str]:
         """
@@ -87,6 +87,7 @@ class YouTubeUploader:
                 "description": description,
                 "tags": tags,
                 "categoryId": category_id,
+                "defaultLanguage": "zh-TW",
             },
             "status": {
                 "privacyStatus": privacy_status,

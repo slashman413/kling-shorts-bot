@@ -1,6 +1,7 @@
 """
 Video looping utility using FFmpeg.
-Takes a Kling-generated video and creates a seamless loop.
+Takes a Kling-generated video, scales to 720x1280 (Shorts HD),
+and creates a seamless loop by repeating N times.
 """
 
 import os
@@ -10,18 +11,19 @@ from pathlib import Path
 
 
 class VideoLooper:
-    """Create looping Shorts videos from generated clips."""
+    """Create looping Shorts videos (720x1280) from generated clips."""
 
-    def __init__(self, target_duration: int = 12):
+    def __init__(self, repeats: int = 4):
         """
         Args:
-            target_duration: Target loop duration in seconds (10-15 recommended)
+            repeats: How many times to repeat the clip (3-5 recommended)
+                     Total duration = clip_duration × repeats
         """
-        self.target_duration = target_duration
+        self.repeats = repeats
 
     def create_loop(self, input_path: str, output_path: str = None) -> str:
         """
-        Create a seamless loop by concatenating multiple copies of the video.
+        Create a seamless 720x1280 Shorts loop by repeating the video N times.
 
         Args:
             input_path: Path to the input video file
@@ -30,24 +32,25 @@ class VideoLooper:
         Returns:
             Path to the looped video file
         """
-        # Get input video duration
+        # Get input video info
         duration = self._get_duration(input_path)
         if not duration or duration <= 0:
             raise ValueError(f"Could not determine duration of {input_path}")
 
-        # Calculate how many copies needed
-        copies = max(2, int(self.target_duration / duration) + 1)
+        width, height = self._get_resolution(input_path)
+        print(f"[Looper] Input: {width}x{height}, {duration:.1f}s, repeating {self.repeats}x")
 
-        # Create file list for FFmpeg concat
-        filelist = []
-        for i in range(copies):
-            filelist.append(f"file '{input_path}'")
+        # Build filter complex:
+        # 1. Scale to 720x1280 (pad to maintain aspect ratio)
+        # 2. Loop the video N times
+        filter_complex = (
+            "[0:v]scale=720:1280:force_original_aspect_ratio=decrease,"
+            "pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black[v];"
+            "[0:a]aloop=loop=-1:size=2*44100[a]"
+        )
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, encoding="utf-8"
-        ) as f:
-            f.write("\n".join(filelist))
-            filelist_path = f.name
+        # Calculate total duration
+        total_duration = duration * self.repeats
 
         if not output_path:
             output_path = str(
@@ -58,26 +61,41 @@ class VideoLooper:
             cmd = [
                 "ffmpeg",
                 "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", filelist_path,
-                "-c", "copy",
-                "-t", str(self.target_duration),
+                "-stream_loop", str(self.repeats - 1),  # repeat N-1 extra times
+                "-i", input_path,
+                "-filter_complex",
+                "scale=720:1280:force_original_aspect_ratio=decrease,"
+                "pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-t", str(total_duration),
+                "-movflags", "+faststart",
+                "-metadata", "title=YouTube Shorts",
+                "-metadata", "comment=Shorts",
                 output_path,
             ]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60
+                cmd, capture_output=True, text=True, timeout=120
             )
             if result.returncode != 0:
-                raise RuntimeError(f"FFmpeg error: {result.stderr}")
+                # Show stderr for debugging
+                error_lines = result.stderr.strip().split("\n")[-10:]
+                raise RuntimeError(f"FFmpeg error: {'; '.join(error_lines)}")
 
+            out_duration = self._get_duration(output_path)
+            out_w, out_h = self._get_resolution(output_path)
             print(
-                f"[Looper] Created {self._get_duration(output_path):.1f}s loop: {output_path}"
+                f"[Looper] ✅ Output: {out_w}x{out_h}, "
+                f"{out_duration:.1f}s ({self.repeats}x loop)"
             )
             return output_path
 
-        finally:
-            os.unlink(filelist_path)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("FFmpeg timed out after 120s")
 
     def _get_duration(self, video_path: str) -> float:
         """Get video duration in seconds using ffprobe."""
@@ -95,3 +113,23 @@ class VideoLooper:
             return float(data.get("format", {}).get("duration", 0))
         except (json.JSONDecodeError, KeyError, ValueError):
             return 0
+
+    def _get_resolution(self, video_path: str) -> tuple:
+        """Get video resolution (width, height) using ffprobe."""
+        cmd = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            video_path,
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            import json
+            data = json.loads(result.stdout)
+            for stream in data.get("streams", []):
+                if stream.get("codec_type") == "video":
+                    return (stream.get("width", 0), stream.get("height", 0))
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+        return (0, 0)
