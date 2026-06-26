@@ -178,17 +178,50 @@ class ShortsPipeline:
         video_results = self.step2_generate_videos(concepts)
         video_ids = self.step3_upload_videos(video_results)
 
-        # Summary
+        # Build structured summary
+        upload_details = []
+        completed = [r for r in video_results if r.get("status") == "completed"]
+        for i, vid in enumerate(video_ids):
+            if i < len(completed):
+                c = completed[i].get("concept", {})
+                upload_details.append({
+                    "video_id": vid,
+                    "url": f"https://youtube.com/watch?v={vid}",
+                    "title": c.get("title", "Untitled"),
+                    "hook_type": c.get("hook_type", "Unknown"),
+                })
+
+        summary = {
+            "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_concepts": len(concepts),
+            "total_videos_completed": sum(1 for r in video_results if r.get("status") == "completed"),
+            "total_uploaded": len(video_ids),
+            "channel_url": "https://youtube.com/@GentleSoul666",
+            "uploads": upload_details,
+        }
+
+        # Save summary for GHA to read
+        with open(self.output_dir / "summary.json", "w", encoding="utf-8") as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+        print(f"  📄 Summary saved: output/summary.json")
+
+        # Print summary
         print(f"\n{'='*60}")
         print(f"  📊 DAY SUMMARY")
         print(f"{'='*60}")
         print(f"  Concepts generated: {len(concepts)}")
-        print(f"  Videos + Looped:    {sum(1 for r in video_results if r.get('status') == 'completed')}")
+        print(f"  Videos + Looped:    {summary['total_videos_completed']}")
         print(f"  Uploaded to YouTube: {len(video_ids)}")
         print(f"  Channel: https://youtube.com/@GentleSoul666")
-        for vid in video_ids:
-            print(f"    → https://youtube.com/watch?v={vid}")
+        for detail in upload_details:
+            print(f"    → {detail['title']}")
+            print(f"      {detail['url']}")
         print(f"{'='*60}\n")
+
+        # Print a JSON line that GHA can capture
+        print(f"---SUMMARY_JSON_START---")
+        print(json.dumps(summary, ensure_ascii=False))
+        print(f"---SUMMARY_JSON_END---")
 
 
 if __name__ == "__main__":
