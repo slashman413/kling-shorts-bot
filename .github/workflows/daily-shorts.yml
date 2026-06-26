@@ -1,9 +1,10 @@
 name: 🎬 每日 Shorts 自動生產線
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+  # ⏸️ 已暫停每日排程 - 等待優化
+  # schedule:
+  #   - cron: '0 0 * * *'
+  workflow_dispatch:  # 僅手動觸發
 
 env:
   KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
