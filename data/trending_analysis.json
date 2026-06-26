@@ -1,0 +1,90 @@
+{
+  "scraped_at": "2026-06-26T16:49:52.051831",
+  "total_viral_analyzed": 9,
+  "trending_hooks": {
+    "破壞慾滿足": {
+      "count": 1,
+      "weight": 0.5,
+      "percentage": 50.0
+    },
+    "強迫症治癒": {
+      "count": 1,
+      "weight": 0.5,
+      "percentage": 50.0
+    }
+  },
+  "total_hook_mentions": 2,
+  "sample_viral_titles": [
+    {
+      "title": "4K Relaxing Nature Sounds - Short Video Clips of Nature",
+      "views": 6642647,
+      "channel": "Relaxing Tree"
+    },
+    {
+      "title": "Golden gate bridge evolution Destruction#shorts#evolution￼#goldengate￼bridge ￼",
+      "views": 1910865,
+      "channel": "SkellyP3D"
+    },
+    {
+      "title": "Battle in Outer Space (1959) | Golden Gate Bridge destruction scene",
+      "views": 1664668,
+      "channel": "Meesmoth"
+    },
+    {
+      "title": "Armageddon (1998) | Paris destruction scene [1080p]",
+      "views": 1632558,
+      "channel": "Meesmoth"
+    },
+    {
+      "title": "Evolution Of Golden Gate Bridge Destruction #shorts #evolution #goldengatebridge",
+      "views": 1530888,
+      "channel": "dripkick"
+    },
+    {
+      "title": "DESTRUCTION Pack - Create Disaster Movies",
+      "views": 750722,
+      "channel": "BIGFILMS"
+    },
+    {
+      "title": "Calming relaxing music 30 seconds|",
+      "views": 318657,
+      "channel": "Srevoleak"
+    },
+    {
+      "title": "Destroy Any Object in Blender in 1 Minute!",
+      "views": 248921,
+      "channel": "BlenderVitals"
+    },
+    {
+      "title": "Kinetic Sand Sandbox Set - Official Commercial",
+      "views": 201475,
+      "channel": "Kinetic Sand"
+    }
+  ],
+  "top_keywords": [
+    [
+      "destroy",
+      1
+    ],
+    [
+      "sand",
+      1
+    ]
+  ],
+  "new_themes_detected": [],
+  "trend_direction": "destruction",
+  "category_weights": {
+    "破壞慾滿足": 3.0,
+    "壓力釋放": 0.5,
+    "強迫症治癒": 3.0,
+    "視覺衝擊": 0.5,
+    "好奇心鉤子": 0.5,
+    "時間壓縮": 0.5,
+    "ASMR 觸感": 0.5,
+    "食物ASMR": 0.5,
+    "視覺治癒": 0.5,
+    "ASMR破壞": 0.5,
+    "張力釋放": 0.5
+  },
+  "new_templates": []
+}

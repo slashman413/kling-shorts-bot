@@ -1,0 +1,66 @@
+name: 📊 每週 Shorts 趨勢爬取
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  scrape-trends:
+    name: 爬取 YouTube Shorts 趨勢
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install deps
+        run: |
+          pip install yt-dlp requests
+          yt-dlp --version
+
+      - name: 📡 Run Trend Scraper
+        run: python src/template_scraper.py
+        continue-on-error: true
+
+      - name: 🔄 Commit Trend Data
+        id: commit
+        run: |
+          if [ ! -f data/trending_analysis.json ]; then
+            echo "No analysis file generated"
+            exit 0
+          fi
+          git config user.name "Hermes Trend Bot"
+          git config user.email "hermes-trend-bot@users.noreply.github.com"
+          git add data/trending_analysis.json
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            DIRECTION=$(python3 -c "import json;print(json.load(open('data/trending_analysis.json')).get('trend_direction','?'))")
+            git commit -m "📊 Weekly trend: $DIRECTION ($(date +%Y-%m-%d))
+
+          author: hermes-agent-deepseek-v4-flash"
+            git push origin main
+            echo "✅ Committed trend data"
+          fi
+
+      - name: 📬 Summary
+        run: |
+          echo "=== 📊 TREND SCRAPE COMPLETE ==="
+          echo "Date: $(date '+%Y-%m-%d %H:%M')"
+          if [ -f data/trending_analysis.json ]; then
+            echo "Result: ✅ Updated"
+            VIRAL=$(python3 -c "import json;print(json.load(open('data/trending_analysis.json')).get('total_viral_analyzed',0))")
+            DIR=$(python3 -c "import json;print(json.load(open('data/trending_analysis.json')).get('trend_direction','?'))")
+            echo "Viral Shorts: $VIRAL | Direction: $DIR"
+          else
+            echo "Result: ❌ No data"
+          fi

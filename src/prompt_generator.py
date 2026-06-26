@@ -6,6 +6,7 @@ Covers the top-performing Shorts categories for maximum viral potential.
 import json
 import os
 import random
+from pathlib import Path
 from typing import Optional
 
 from openai import OpenAI
@@ -200,15 +201,41 @@ class PromptGenerator:
     """Generate viral Shorts prompts using 25 templates or LLM."""
 
     def __init__(self):
+        # Load trending analysis for dynamic template weighting
+        self.trend_weights = self._load_trending_weights()
+
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             self.use_llm = False
-            print(f"[PromptGen] Templates loaded: {len(VIRAL_TEMPLATES)} viral hooks")
+            trend_info = f" | {len(self.trend_weights)} trend-weighted categories" if self.trend_weights else ""
+            print(f"[PromptGen] Templates loaded: {len(VIRAL_TEMPLATES)} viral hooks{trend_info}")
             return
 
         self.client = OpenAI(api_key=api_key)
         self.model = os.environ.get("LLM_MODEL", "gpt-4o")
         self.use_llm = True
+
+    def _load_trending_weights(self) -> dict:
+        """Load trending analysis and return {hook_base: weight} mapping."""
+        trend_file = Path(__file__).parent.parent / "data" / "trending_analysis.json"
+        if not trend_file.exists():
+            return {}
+
+        try:
+            with open(trend_file, encoding="utf-8") as f:
+                data = json.load(f)
+
+            weights = data.get("category_weights", {})
+            if weights:
+                print(f"[Trend] Loaded {len(weights)} category weights from trending analysis")
+                print(f"[Trend] Direction: {data.get('trend_direction', 'unknown')}")
+                # Show top weighted categories
+                for cat, w in sorted(weights.items(), key=lambda x: x[1], reverse=True)[:5]:
+                    print(f"[Trend]   {w:.1f}x  {cat}")
+            return weights
+        except (json.JSONDecodeError, KeyError, IOError) as e:
+            print(f"[Trend] Could not load trend data: {e}")
+            return {}
 
     def generate_concepts(self, count: int = 10) -> list[dict]:
         """
@@ -282,32 +309,77 @@ class PromptGenerator:
 
     def _generate_from_templates(self, count: int) -> list[dict]:
         """
-        Randomly select `count` templates from the 25-template pool.
-        Ensures no duplicate hooks in a single batch.
+        Select `count` templates using trend-weighted random sampling.
+        Trending hook categories get higher selection probability.
         """
         import re
-        available = list(enumerate(VIRAL_TEMPLATES))
-        random.shuffle(available)
 
-        # Pick `count` templates, ensuring hook diversity
-        selected = []
-        used_hooks = set()
-        for idx, template in available:
-            if len(selected) >= count:
-                break
-            # Avoid same hook type in one batch if possible
-            hook_base = template["hook"].split(" - ")[0]
-            if hook_base not in used_hooks:
-                selected.append((idx, template))
-                used_hooks.add(hook_base)
+        # Build weighted template pool
+        template_items = list(enumerate(VIRAL_TEMPLATES))
+        if self.trend_weights:
+            # Weight each template by its hook category's trending score
+            weights = []
+            for idx, tmpl in template_items:
+                hook_base = tmpl["hook"].split(" - ")[0]
+                w = self.trend_weights.get(hook_base, 0.5)
+                weights.append(max(0.1, w))  # minimum 0.1 to avoid zero probability
+            # Normalize weights
+            total = sum(weights)
+            weights = [w / total for w in weights]
 
-        # If we need more and ran out of unique hooks, just add remaining
-        if len(selected) < count:
-            for idx, template in available:
+            # Weighted random selection (without replacement)
+            selected_indices = set()
+            selected = []
+            # Use weighted sampling: pick one at a time
+            available_indices = list(range(len(template_items)))
+            available_weights = [weights[i] for i in available_indices]
+
+            while len(selected) < count and available_indices:
+                # Recompute weights for remaining items
+                w_total = sum(available_weights)
+                probs = [w / w_total for w in available_weights]
+                pick = random.choices(range(len(available_indices)), weights=probs, k=1)[0]
+                actual_idx = available_indices.pop(pick)
+                w = available_weights.pop(pick)
+
+                idx, tmpl = template_items[actual_idx]
+                hook_base = tmpl["hook"].split(" - ")[0]
+
+                # Avoid duplicate hook bases in one batch
+                if hook_base not in {t["hook"].split(" - ")[0] for _, t in selected}:
+                    selected.append((idx, tmpl))
+
+                # Safety: if too few unique hooks, just add them
+                if len(available_indices) < (count - len(selected)):
+                    break
+
+            # Fill remaining slots if we ran out of unique hooks
+            if len(selected) < count:
+                for idx, tmpl in template_items:
+                    if len(selected) >= count:
+                        break
+                    if (idx, tmpl) not in selected:
+                        hook_base = tmpl["hook"].split(" - ")[0]
+                        selected.append((idx, tmpl))
+        else:
+            # No trend data: random shuffle
+            random.shuffle(template_items)
+            selected = []
+            used_hooks = set()
+            for idx, tmpl in template_items:
                 if len(selected) >= count:
                     break
-                if (idx, template) not in selected:
-                    selected.append((idx, template))
+                hook_base = tmpl["hook"].split(" - ")[0]
+                if hook_base not in used_hooks:
+                    selected.append((idx, tmpl))
+                    used_hooks.add(hook_base)
+            # Fill remaining
+            if len(selected) < count:
+                for idx, tmpl in template_items:
+                    if len(selected) >= count:
+                        break
+                    if (idx, tmpl) not in selected:
+                        selected.append((idx, tmpl))
 
         concepts = []
         for i, (template_idx, template) in enumerate(selected):
