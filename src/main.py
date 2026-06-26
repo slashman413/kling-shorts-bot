@@ -1,28 +1,37 @@
 """
 Main pipeline: orchestrates the daily Shorts generation workflow.
+Generates 9:16 vertical videos, loops them to 12-15s, uploads to YouTube.
 """
 
 import json
 import os
 import sys
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 
-# Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from kling_client import KlingClient
+from video_looper import VideoLooper
 from prompt_generator import PromptGenerator
 from youtube_uploader import YouTubeUploader
 
 
 class ShortsPipeline:
-    """Daily pipeline for generating and uploading Shorts."""
+    """Daily pipeline for generating looping Shorts videos."""
 
     def __init__(self):
         self.prompt_gen = PromptGenerator()
+        self.looper = VideoLooper(target_duration=12)
         self.config = self._load_config()
-        self.videos_per_day = int(os.environ.get("VIDEOS_PER_DAY", self.config.get("schedule", {}).get("videos_per_day", 10)))
+        self.videos_per_day = int(
+            os.environ.get("VIDEOS_PER_DAY", 
+            self.config.get("schedule", {}).get("videos_per_day", 10))
+        )
+        self.output_dir = Path("output")
+        self.output_dir.mkdir(exist_ok=True)
 
     def _load_config(self) -> dict:
         import yaml
@@ -33,7 +42,7 @@ class ShortsPipeline:
         return {}
 
     def step1_generate_concepts(self) -> list[dict]:
-        """Step 1: Use LLM to generate viral concepts."""
+        """Step 1: Generate viral concepts."""
         print(f"\n{'='*60}")
         print(f"📝 Step 1: Generating {self.videos_per_day} viral concepts...")
         print(f"{'='*60}")
@@ -43,70 +52,82 @@ class ShortsPipeline:
         for i, c in enumerate(concepts, 1):
             print(f"  [{i}] {c['hook_type']} → {c['title']}")
 
-        # Save concepts for audit
-        output_dir = Path("output")
-        output_dir.mkdir(exist_ok=True)
-        with open(output_dir / "concepts_today.json", "w", encoding="utf-8") as f:
+        with open(self.output_dir / "concepts_today.json", "w", encoding="utf-8") as f:
             json.dump(concepts, f, ensure_ascii=False, indent=2)
 
         return concepts
 
     def step2_generate_videos(self, concepts: list[dict]) -> list[dict]:
-        """Step 2: Call Kling API to generate videos."""
+        """Step 2: Generate vertical (9:16) videos with Kling, then create loops."""
         print(f"\n{'='*60}")
-        print(f"🎬 Step 2: Generating videos with Kling AI...")
+        print(f"🎬 Step 2: Generating looping Shorts with Kling AI...")
         print(f"{'='*60}")
 
         try:
             kling = KlingClient()
         except ValueError as e:
             print(f"  ❌ {e}")
-            print("  ⏩ Skipping Kling generation, saving prompts only.")
-            return [{"concept": c, "video_path": None, "status": "prompt_only"} for c in concepts]
+            print("  ⏩ Saving prompts only.")
+            return [{"concept": c, "local_path": None, "status": "prompt_only"} for c in concepts]
 
         results = []
         for i, concept in enumerate(concepts, 1):
-            print(f"\n  [{i}/{len(concepts)}] Generating: {concept['title']}")
+            print(f"\n  [{i}/{len(concepts)}] {concept['title']}")
             try:
+                # 1. Generate video with Kling (9:16, 6 seconds)
                 response = kling.text_to_video(
                     prompt=concept["kling_prompt"],
-                    duration=5,
+                    duration=6,
+                    aspect_ratio="9:16",
                 )
                 task_id = response.get("data", {}).get("task_id", "")
-                print(f"    ✅ Task created: {task_id}")
+                print(f"    📤 Task: {task_id}")
 
-                # Wait for video (async in batch mode)
+                # 2. Wait for completion
                 video_url = kling.wait_for_video(task_id, poll_interval=15, timeout=300)
-                if video_url:
-                    print(f"    ✅ Video ready: {video_url[:60]}...")
-                    results.append({
-                        "concept": concept,
-                        "video_url": video_url,
-                        "task_id": task_id,
-                        "status": "completed",
-                    })
-                else:
-                    results.append({
-                        "concept": concept,
-                        "video_url": None,
-                        "task_id": task_id,
-                        "status": "failed",
-                    })
-            except Exception as e:
-                print(f"    ❌ Error: {e}")
+                if not video_url:
+                    results.append({"concept": concept, "local_path": None, "status": "failed"})
+                    continue
+
+                print(f"    ✅ Video URL received")
+
+                # 3. Download the video
+                local_path = self.output_dir / f"video_{i:02d}.mp4"
+                self._download_video(video_url, local_path)
+                print(f"    💾 Downloaded: {local_path}")
+
+                # 4. Create loop (12 seconds)
+                loop_path = self.output_dir / f"loop_{i:02d}.mp4"
+                self.looper.create_loop(str(local_path), str(loop_path))
+                print(f"    🔄 Loop created: {loop_path}")
+
                 results.append({
                     "concept": concept,
-                    "video_url": None,
-                    "status": "error",
-                    "error": str(e),
+                    "local_path": str(loop_path),
+                    "original_url": video_url,
+                    "task_id": task_id,
+                    "status": "completed",
                 })
+
+            except Exception as e:
+                print(f"    ❌ Error: {e}")
+                results.append({"concept": concept, "local_path": None, "status": "error", "error": str(e)})
 
         return results
 
+    def _download_video(self, url: str, path: Path):
+        """Download video from URL using curl."""
+        result = subprocess.run(
+            ["curl", "-s", "-o", str(path), url],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Download failed: {result.stderr}")
+
     def step3_upload_videos(self, video_results: list[dict]) -> list[str]:
-        """Step 3: Upload generated videos to YouTube."""
+        """Step 3: Upload looped Shorts to YouTube."""
         print(f"\n{'='*60}")
-        print(f"📤 Step 3: Uploading to YouTube...")
+        print(f"📤 Step 3: Uploading looping Shorts to YouTube...")
         print(f"{'='*60}")
 
         try:
@@ -116,11 +137,7 @@ class ShortsPipeline:
             print("  ⏩ Skipping YouTube upload.")
             return []
 
-        # Filter only successful videos
-        to_upload = [
-            r for r in video_results
-            if r.get("status") == "completed" and r.get("video_url")
-        ]
+        to_upload = [r for r in video_results if r.get("status") == "completed" and r.get("local_path")]
 
         if not to_upload:
             print("  No videos to upload.")
@@ -129,11 +146,11 @@ class ShortsPipeline:
         video_ids = []
         for i, result in enumerate(to_upload, 1):
             concept = result["concept"]
-            print(f"\n  [{i}/{len(to_upload)}] Uploading: {concept['title']}")
+            print(f"\n  [{i}/{len(to_upload)}] {concept['title']}")
 
             try:
                 vid = yt.upload_video(
-                    video_path=result["video_url"],  # Direct URL
+                    video_path=result["local_path"],
                     title=concept["title"],
                     description=concept.get("description", ""),
                     tags=concept.get("tags", ["#Shorts"]),
@@ -150,19 +167,15 @@ class ShortsPipeline:
         """Run the full pipeline."""
         print(f"\n{'='*60}")
         print(f"  🚀 KLING SHORTS BOT - 每日自動化 Shorts 生產線")
+        print(f"  📐 9:16 Vertical | 🔄 Loop 12s | 📤 YouTube Auto-Upload")
         print(f"{'='*60}")
 
-        # Step 1: Generate concepts
         concepts = self.step1_generate_concepts()
-
         if not concepts:
-            print("❌ No concepts generated! Check your LLM config.")
+            print("❌ No concepts generated!")
             return
 
-        # Step 2: Generate videos (or save prompts if no Kling API)
         video_results = self.step2_generate_videos(concepts)
-
-        # Step 3: Upload to YouTube
         video_ids = self.step3_upload_videos(video_results)
 
         # Summary
@@ -170,12 +183,11 @@ class ShortsPipeline:
         print(f"  📊 DAY SUMMARY")
         print(f"{'='*60}")
         print(f"  Concepts generated: {len(concepts)}")
-        print(f"  Videos generated:   {sum(1 for r in video_results if r.get('status') == 'completed')}")
+        print(f"  Videos + Looped:    {sum(1 for r in video_results if r.get('status') == 'completed')}")
         print(f"  Uploaded to YouTube: {len(video_ids)}")
-        if video_ids:
-            print(f"  Channel: https://youtube.com/@GentleSoul666")
-            for vid in video_ids:
-                print(f"    → https://youtube.com/watch?v={vid}")
+        print(f"  Channel: https://youtube.com/@GentleSoul666")
+        for vid in video_ids:
+            print(f"    → https://youtube.com/watch?v={vid}")
         print(f"{'='*60}\n")
 
 

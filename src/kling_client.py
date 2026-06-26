@@ -69,10 +69,11 @@ class KlingClient:
     def text_to_video(
         self,
         prompt: str,
-        duration: int = 5,
+        duration: int = 6,
         cfg_scale: float = 0.5,
         negative_prompt: str = "",
         model: str = "kling-v3",
+        aspect_ratio: str = "9:16",
     ) -> dict:
         """
         Generate a video from text prompt using Kling AI.
@@ -83,6 +84,7 @@ class KlingClient:
             cfg_scale: How strictly to follow the prompt (0-1)
             negative_prompt: What to avoid in the video
             model: Model version (kling-v3 recommended)
+            aspect_ratio: "9:16" for vertical Shorts, "16:9" for landscape
 
         Returns:
             Response dict with task_id for status polling
@@ -90,13 +92,17 @@ class KlingClient:
         path = "/v1/videos/text2video"
         url = f"{self.api_base}{path}"
 
-        body = json.dumps({
+        payload = {
             "model_name": model,
             "prompt": prompt,
             "duration": duration,
             "cfg_scale": cfg_scale,
-            "negative_prompt": negative_prompt or None,
-        }, ensure_ascii=False)
+            "aspect_ratio": aspect_ratio,
+        }
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+
+        body = json.dumps(payload, ensure_ascii=False)
 
         headers = self._get_headers("POST", path, body)
 

@@ -12,30 +12,46 @@ from openai import OpenAI
 
 # Viral Shorts prompt templates library
 VIRAL_TEMPLATES = [
+    # 破壞系列
     {
-        "hook": "破壞慾滿足 - 東西被壓碎",
-        "template": "A {object} being slowly crushed by a massive {crusher}, cinematic slow-motion, satisfying destruction, macro close-up, dramatic lighting",
-        "example": "A glowing neon smartphone being slowly crushed by a massive hydraulic press"
+        "hook": "破壞慾滿足 - 液壓機壓碎",
+        "template": "A {object} being slowly crushed by a massive hydraulic press, satisfying slow-motion destruction, fragments flying, dramatic cinematic lighting, vertical 9:16 video, macro close-up of cracking surface, hyper-realistic textures",
     },
     {
-        "hook": "壓力釋放 - 等待的張力",
-        "template": "A {subject} about to {action}, tension building, anticipation, slow build-up then sudden release, satisfying moment",
+        "hook": "破壞慾滿足 - 重物墜落",
+        "template": "A heavy {object} falling from above and smashing a {target} on impact, slow-motion explosion of pieces, dramatic smash, satisfying destruction, slow-mo, vertical video 9:16",
     },
     {
-        "hook": "強迫症治癒 - 完美對稱/排列",
-        "template": "Perfectly organized {objects} being arranged in satisfying symmetry, ASMR-style, crisp movements, clean aesthetic",
+        "hook": "壓力釋放 - 氣球爆破",
+        "template": "Close-up of a {color} balloon being slowly inflated until it suddenly POPS, tension building, satisfying release, slow-motion capture of the burst, vertical 9:16, macro detail of latex tearing",
     },
     {
-        "hook": "時間壓縮 - 快速變化",
-        "template": "Time-lapse of {subject} transforming, smooth transition, mesmerizing change, before and after reveal",
+        "hook": "強迫症治癒 - 完美排列",
+        "template": "Perfectly organized {objects} being arranged in symmetrical pattern, satisfying ASMR movements, crisp and precise placement, clean minimal aesthetic, vertical 9:16, smooth transitions",
     },
     {
-        "hook": "巨大 vs 微小 - 視覺衝擊",
-        "template": "Extreme scale contrast between {big_subject} and {small_subject}, dramatic perspective, awe-inspiring shot",
+        "hook": "強迫症治癒 - 髒污清潔",
+        "template": "Time-lapse of a {surface} being deep cleaned, satisfying transformation from dirty to spotless, foam and bubbles, satisfying scrub, before and after reveal, vertical 9:16",
     },
     {
-        "hook": "好奇心鉤子 - 你不知道的",
-        "template": "Close-up revealing hidden detail of {subject}, surprising discovery, macro exploration, mind-blowing reveal",
+        "hook": "視覺衝擊 - 巨大 vs 微小",
+        "template": "Extreme macro close-up of a {small_object} next to a {big_object}, shocking scale contrast, tilt-shift miniature effect, dramatic depth of field, vertical 9:16",
+    },
+    {
+        "hook": "好奇心鉤子 - 變色/變形",
+        "template": "A {object} slowly transforming its color from {color1} to {color2}, mesmerizing gradient transition, smooth and continuous morphing, satisfying visual effect, vertical 9:16",
+    },
+    {
+        "hook": "破壞慾滿足 - 切割/切開",
+        "template": "A sharp blade slowly slicing through a {object}, clean cut revealing perfect cross-section, satisfying precision cutting, macro close-up, vertical 9:16",
+    },
+    {
+        "hook": "時間壓縮 - 生長/綻放",
+        "template": "Time-lapse of a {flower} blooming in slow motion, petals opening gracefully, beautiful natural process, vibrant colors, dreamy lighting, vertical 9:16",
+    },
+    {
+        "hook": "ASMR 觸感 - 質地變化",
+        "template": "Close-up of hands interacting with {texture}, satisfying tactile sensation, ASMR-style visual, soft focus, warm lighting, vertical 9:16, intimate macro shot",
     },
 ]
 
@@ -129,34 +145,68 @@ class PromptGenerator:
         """Use template library when no LLM available."""
         import random
 
-        objects = [
-            ("colorful gummy bear", "giant hydraulic press"),
-            ("ripe watermelon", "industrial compressor"),
-            ("porcelain doll", "steam roller"),
-            ("glass bottle", "hydraulic crusher"),
-            ("smartphone", "metal press"),
-            ("rubber duck", "garbage truck"),
-            ("pumpkin", "car tire"),
-            ("ice sculpture", "heated blade"),
-            ("clay pot", "hydraulic hammer"),
-            ("tennis ball", "vice grip"),
+        # Diverse parameter pools for templates
+        template_data = [
+            {"object": "colorful gummy bear", "target": "concrete floor"},
+            {"object": "a heavy steel anvil", "target": "a ripe watermelon"},
+            {"color": "red", "object": "balloon"},
+            {"objects": "colorful gummy bears"},
+            {"surface": "dirty kitchen stove top"},
+            {"small_object": "tiny toy car", "big_object": "giant shoe"},
+            {"object": "a fresh flower", "color1": "white", "color2": "bright red"},
+            {"object": "a ripe avocado"},
+            {"flower": "beautiful red rose"},
+            {"texture": "soft velvet fabric"},
+            {"object": "rainbow colored slime"},
+            {"object": "shiny crystal ice cube"},
+            {"color": "golden", "object": "helium balloon"},
+            {"objects": "colorful domino blocks"},
+            {"surface": "muddy car windshield"},
+            {"small_object": "a single grain of rice", "big_object": "a human hand"},
+            {"object": "colorful liquid", "color1": "blue", "color2": "purple"},
+            {"object": "a soft fresh loaf of bread"},
+            {"flower": "giant sunflower"},
+            {"texture": "crunchy autumn leaves"},
         ]
 
         concepts = []
-        for i in range(min(count, len(objects))):
-            obj, crusher = objects[i % len(objects)]
+        for i in range(count):
+            template = VIRAL_TEMPLATES[i % len(VIRAL_TEMPLATES)]
+            data = template_data[i % len(template_data)]
+
+            # Fill template placeholders
+            prompt = template["template"]
+            for key, value in data.items():
+                prompt = prompt.replace(f"{{{key}}}", value)
+
+            # Generate title based on hook type
+            hook = template["hook"]
+            if "壓碎" in hook or "切割" in hook:
+                title = f"{data.get('object','Object').title()} gets DESTROYED! 😱 #Shorts"
+            elif "爆破" in hook:
+                title = f"Watch this {data.get('color','')} balloon POP! 💥 #Shorts"
+            elif "排列" in hook:
+                title = f"Satisfying {data.get('objects','objects')} arrangement! ✨ #Shorts"
+            elif "清潔" in hook:
+                title = f"Satisfying {data.get('surface','surface')} cleaning! 🧼 #Shorts"
+            elif "巨大" in hook:
+                title = f"Size comparison: {data.get('small_object','?')} vs {data.get('big_object','?')} 🤯 #Shorts"
+            elif "時間" in hook:
+                title = f"Mesmerizing {data.get('flower','flower')} blooming! 🌸 #Shorts"
+            else:
+                title = f"Satisfying {data.get('object','video')}! 🔥 #Shorts"
+
             concepts.append({
-                "title": f"Satisfying {obj} gets CRUSHED! 😱",
-                "kling_prompt": (
-                    f"Close-up cinematic shot of a {obj} being slowly crushed by a {crusher}, "
-                    f"macro detail of the object deforming and cracking under pressure, "
-                    f"splinters and fragments flying, dramatic slow-motion, "
-                    f"cinematic lighting with harsh shadows, photorealistic textures, "
-                    f"industrial background, 8K quality, satisfying destruction"
+                "title": title[:95],
+                "kling_prompt": prompt,
+                "description": (
+                    f"{title}\n\n"
+                    f"Follow for more satisfying Shorts! 🔥\n"
+                    f"@GentleSoul666\n\n"
+                    f"#Shorts #Viral #Satisfying #OddlySatisfying #ASMR #Loop"
                 ),
-                "description": f"Watch this {obj} get completely destroyed! 🔥\n\nMost satisfying crush ever!\n\n#Shorts #Viral #Satisfying",
-                "tags": ["#Shorts", "#Viral", "#Satisfying", "#Destruction", "#Crush", "#OddlySatisfying", "#ASMR"],
-                "hook_type": "破壞慾滿足",
+                "tags": ["#Shorts", "#Viral", "#Satisfying", "#OddlySatisfying", "#ASMR", "#Loop"],
+                "hook_type": hook,
             })
 
         return concepts
