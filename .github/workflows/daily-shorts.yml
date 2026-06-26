@@ -1,0 +1,110 @@
+name: 🎬 每日 Shorts 自動生產線
+
+on:
+  schedule:
+    # 台灣時間每天早上 8:00 = UTC 00:00
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # 手動觸發
+
+env:
+  # Kling AI API
+  KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+  KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
+  
+  # YouTube OAuth
+  YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+  YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+  
+  # OpenAI (for prompt generation)
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  LLM_MODEL: gpt-4o
+  
+  # Pipeline config
+  VIDEOS_PER_DAY: 10
+
+jobs:
+  generate-and-upload:
+    name: 生成 Shorts 並上傳 YouTube
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 10支影片可能需要2小時
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🎬 Run Shorts Pipeline
+        run: python src/main.py
+        env:
+          KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+          KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: 📤 Upload Output Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-shorts-output
+          path: |
+            output/
+            *.log
+          retention-days: 7
+
+      - name: 📬 Send Status to Discord (optional)
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "Pipeline completed with status: $STATUS"
+          echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "Channel: https://youtube.com/@GentleSoul666"
+
+  # 備用：如果主要 Kling API 失敗，使用 prompt-only 模式
+  fallback-prompt-only:
+    name: 📝 Fallback - 只產生 Prompt
+    needs: generate-and-upload
+    if: failure()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install pyyaml openai
+
+      - name: 📝 Generate prompt-only output
+        run: |
+          python -c "
+          import sys, json, os
+          sys.path.insert(0, 'src')
+          from prompt_generator import PromptGenerator
+          
+          pg = PromptGenerator()
+          concepts = pg.generate_concepts(count=10)
+          
+          print(json.dumps(concepts, ensure_ascii=False, indent=2))
+          print(f'\n✅ Generated {len(concepts)} concepts (prompt-only mode)')
+          print('Kling API or YouTube upload failed, but prompts are ready!')
+          "
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -1,0 +1,39 @@
+# ============================================================
+# Kling Shorts Bot 設定檔
+# 使用前請先設置對應的環境變數或 GitHub Secrets
+# ============================================================
+
+# Kling AI API 設定
+kling:
+  api_base: "https://api.klingai.com"
+  # 請在環境變數中設定 KLING_ACCESS_KEY 和 KLING_SECRET_KEY
+  # 申請: https://klingai.com → API Platform → 創建 API Key
+
+# YouTube API 設定
+youtube:
+  # 請設定以下環境變數:
+  # YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN
+  # OAuth 設定指南: 見 setup_guide.md
+
+# OpenAI / LLM 設定 (用來生成創意 Prompt)
+llm:
+  provider: "openai"  # openai 或 azure
+  model: "gpt-4o"
+  # 請設定 OPENAI_API_KEY 環境變數
+
+# 排程設定
+schedule:
+  videos_per_day: 10       # 每天生成影片數量
+  max_retries: 3           # API 呼叫失敗重試次數
+  output_dir: "./output"   # 影片暫存目錄
+
+# Shorts 風格設定
+shorts:
+  duration_seconds: 5      # 每支影片秒數 (Kling 支援 5 或 10)
+  aspect_ratio: "9:16"     # 直式短影片
+  music_recommendations:
+    - "Phonky Tribu · Funk Tribu"  # 爆款 Shorts 常用曲
+    - "Classic suspense build-up"
+    - "Satisfying ASMR destruction sounds"
+    - "Epic orchestral drop"
+    - "Lofi chill beats"

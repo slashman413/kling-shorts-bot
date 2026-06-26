@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+venv/
+output/*.mp4
+output/*.png
+youtube_token.pickle
+client_secret.json
+*.log
