@@ -1,10 +1,11 @@
 """
 Discord webhook notification script.
 Reads output/summary.json and sends an embed to Discord.
+Uses urllib only — no external dependencies.
 """
 import json
 import os
-import sys
+import urllib.request
 from pathlib import Path
 
 
@@ -14,7 +15,6 @@ def build_success_embed(summary: dict) -> dict:
     count = len(uploads)
     fields = []
 
-    # Group into rows of 3 (Discord max 25 fields per embed)
     for i, u in enumerate(uploads):
         title_clean = u["title"].replace("#Shorts", "").strip()
         fields.append({
@@ -27,7 +27,7 @@ def build_success_embed(summary: dict) -> dict:
         "title": "🎬 Shorts 每日生產報告",
         "description": f"✅ 成功上傳 **{count}** 支 Shorts 到 YouTube！",
         "color": 0x00FF88,
-        "fields": fields[:24],  # Discord limit: 25 fields
+        "fields": fields[:24],
         "footer": {
             "text": f"📅 {summary['date']} | 📊 {summary['total_videos_completed']} generated",
         },
@@ -45,10 +45,60 @@ def build_failure_embed(status: str) -> dict:
     }
 
 
+def send_webhook(webhook_url: str, payload: dict) -> bool:
+    """Send a JSON payload to a Discord webhook URL."""
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        webhook_url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Hermes-ShortsBot/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            print(f"[Discord] ✅ Sent ({resp.status})")
+            return True
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:200]
+        print(f"[Discord] ❌ HTTP {e.code}: {body}")
+        # Fallback: try curl
+        return _send_with_curl(webhook_url, payload)
+    except Exception as e:
+        print(f"[Discord] ❌ {e}")
+        return _send_with_curl(webhook_url, payload)
+
+
+def _send_with_curl(webhook_url: str, payload: dict) -> bool:
+    """Fallback: send webhook via curl (works on more environments)."""
+    import subprocess, tempfile
+    tmp = Path(tempfile.mktemp(suffix=".json"))
+    try:
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        result = subprocess.run(
+            ["curl", "-s", "-H", "Content-Type: application/json",
+             "-d", f"@{tmp}", webhook_url],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode == 0:
+            print("[Discord] ✅ Sent (via curl)")
+            return True
+        print(f"[Discord] ❌ curl failed: {result.stderr[:200]}")
+        return False
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--print-summary", action="store_true", help="Print pipeline summary from output/summary.json")
+    parser.add_argument("--print-summary", action="store_true",
+                        help="Print pipeline summary from output/summary.json")
     args = parser.parse_args()
 
     if args.print_summary:
@@ -59,6 +109,7 @@ def main():
             for u in summary.get("uploads", []):
                 print(f"  → {u['title'][:50]}")
         return
+
     summary_file = Path("output/summary.json")
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
     status = os.environ.get("PIPELINE_STATUS", "success")
@@ -78,23 +129,7 @@ def main():
         embed = build_failure_embed(status)
 
     payload = {"embeds": [embed]}
-
-    # Write payload to file for curl
-    payload_file = Path("/tmp/discord_payload.json")
-    payload_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-    # Send via curl
-    import subprocess
-    result = subprocess.run(
-        ["curl", "-s", "-H", "Content-Type: application/json",
-         "-d", str(payload_file), webhook_url],
-        capture_output=True, text=True, timeout=15,
-    )
-
-    if result.returncode == 0:
-        print("[Discord] ✅ Notification sent")
-    else:
-        print(f"[Discord] ❌ Failed: {result.stderr}")
+    send_webhook(webhook_url, payload)
 
 
 if __name__ == "__main__":
