@@ -1,6 +1,6 @@
 """
 Kling AI API client for text-to-video generation.
-API docs: https://docs.klingai.com/api-reference/videos/create-video-text-to-video
+Supports both AK/SK (HMAC) and Bearer Token auth.
 """
 
 import os
@@ -9,7 +9,6 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime
 from typing import Optional
 
 import requests
@@ -19,37 +18,53 @@ class KlingClient:
     """Client for Kling AI video generation API."""
 
     def __init__(self):
-        self.access_key = os.environ.get("KLING_ACCESS_KEY", "")
-        self.secret_key = os.environ.get("KLING_SECRET_KEY", "")
         self.api_base = "https://api.klingai.com"
-        if not self.access_key or not self.secret_key:
-            raise ValueError(
-                "KLING_ACCESS_KEY and KLING_SECRET_KEY must be set in environment variables. "
-                "Get them at https://klingai.com → API Platform"
-            )
+        
+        # Try bearer token first (new auth method)
+        self.api_key = os.environ.get("KLING_API_KEY", "")
+        if not self.api_key:
+            self.api_key = os.environ.get("KLING_ACCESS_KEY", "")
+        
+        self.is_bearer_token = self.api_key.startswith("api-key-") if self.api_key else False
+        
+        if not self.is_bearer_token:
+            # Fall back to AK/SK HMAC auth
+            self.access_key = os.environ.get("KLING_ACCESS_KEY", "")
+            self.secret_key = os.environ.get("KLING_SECRET_KEY", "")
+            
+            if not self.access_key or not self.secret_key:
+                raise ValueError(
+                    "Kling API credentials not found. Set one of:\n"
+                    "  - KLING_API_KEY (new bearer token, starts with 'api-key-')\n"
+                    "  - KLING_ACCESS_KEY + KLING_SECRET_KEY (legacy AK/SK pair)\n"
+                    "Get them at https://klingai.com → API Platform"
+                )
 
-    def _generate_signature(self, method: str, path: str, body: str = "") -> dict:
-        """Generate Kling API signature using AK/SK."""
-        timestamp = str(int(time.time()))
-        nonce = str(uuid.uuid4())
-
-        # Build signature string
-        sign_str = f"{method}\n{path}\n{timestamp}\n{nonce}\n{body}"
-
-        # HMAC-SHA256 signature
-        signature = hmac.new(
-            self.secret_key.encode("utf-8"),
-            sign_str.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
-
-        return {
-            "Content-Type": "application/json",
-            "AccessKey": self.access_key,
-            "Signature": signature,
-            "Timestamp": timestamp,
-            "Nonce": nonce,
-        }
+    def _get_headers(self, method: str, path: str, body: str = "") -> dict:
+        """Generate appropriate auth headers."""
+        if self.is_bearer_token:
+            return {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            }
+        else:
+            # Legacy AK/SK HMAC signature
+            timestamp = str(int(time.time()))
+            nonce = str(uuid.uuid4())
+            sign_str = f"{method}\n{path}\n{timestamp}\n{nonce}\n{body}"
+            signature = hmac.new(
+                self.secret_key.encode("utf-8"),
+                sign_str.encode("utf-8"),
+                hashlib.sha256
+            ).hexdigest()
+            
+            return {
+                "Content-Type": "application/json",
+                "AccessKey": self.access_key,
+                "Signature": signature,
+                "Timestamp": timestamp,
+                "Nonce": nonce,
+            }
 
     def text_to_video(
         self,
@@ -67,7 +82,7 @@ class KlingClient:
             duration: Video duration in seconds (5 or 10)
             cfg_scale: How strictly to follow the prompt (0-1)
             negative_prompt: What to avoid in the video
-            model: Model version
+            model: Model version (kling-v3 recommended)
 
         Returns:
             Response dict with task_id for status polling
@@ -83,7 +98,7 @@ class KlingClient:
             "negative_prompt": negative_prompt or None,
         }, ensure_ascii=False)
 
-        headers = self._generate_signature("POST", path, body)
+        headers = self._get_headers("POST", path, body)
 
         resp = requests.post(url, headers=headers, data=body, timeout=60)
         resp.raise_for_status()
@@ -94,7 +109,7 @@ class KlingClient:
         path = f"/v1/videos/text2video/{task_id}"
         url = f"{self.api_base}{path}"
 
-        headers = self._generate_signature("GET", path)
+        headers = self._get_headers("GET", path)
 
         resp = requests.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
