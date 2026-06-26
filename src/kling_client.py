@@ -113,15 +113,19 @@ class KlingClient:
         for attempt in range(max_retries):
             resp = requests.post(url, headers=headers, data=body, timeout=60)
             if resp.status_code == 429:
-                wait = min(2 ** attempt * 5, 120)  # 5s, 10s, 20s, 40s, 80s
-                print(f"    ⏳ Rate limited (429), retrying in {wait}s... (attempt {attempt+1}/{max_retries})")
-                time.sleep(wait)
-                continue
+                try:
+                    err_detail = resp.json()
+                except Exception:
+                    err_detail = resp.text[:200]
+                print(f"    ⏳ Rate limited (429): {err_detail}")
+                if attempt < max_retries - 1:
+                    wait = min(2 ** attempt * 5, 120)
+                    print(f"       Retrying in {wait}s... (attempt {attempt+2}/{max_retries})")
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(f"Kling API 429 after {max_retries} retries: {err_detail}")
             resp.raise_for_status()
             return resp.json()
-
-        # All retries exhausted
-        raise RuntimeError(f"Kling API rate limited after {max_retries} retries")
 
     def get_task_status(self, task_id: str) -> dict:
         """Poll for video generation task status."""
