@@ -109,21 +109,32 @@ class KlingClient:
 
         headers = self._get_headers("POST", path, body)
 
-        # Retry on 429 with exponential backoff
+        # Retry on 429 with exponential backoff, but NOT for balance errors
         for attempt in range(max_retries):
             resp = requests.post(url, headers=headers, data=body, timeout=60)
             if resp.status_code == 429:
                 try:
-                    err_detail = resp.json()
+                    err_data = resp.json()
+                    err_code = err_data.get("code", 0)
+                    err_msg = err_data.get("message", resp.text[:200])
                 except Exception:
-                    err_detail = resp.text[:200]
-                print(f"    ⏳ Rate limited (429): {err_detail}")
+                    err_code = 0
+                    err_msg = resp.text[:200]
+
+                # Code 1102 = insufficient balance → fail immediately, no retry
+                if err_code == 1102:
+                    raise RuntimeError(
+                        f"Kling API: 餘額不足！請至 https://klingai.com 儲值\n"
+                        f"  Error: {err_msg}"
+                    )
+
+                print(f"    ⏳ Rate limited (429): {err_msg}")
                 if attempt < max_retries - 1:
                     wait = min(2 ** attempt * 5, 120)
                     print(f"       Retrying in {wait}s... (attempt {attempt+2}/{max_retries})")
                     time.sleep(wait)
                     continue
-                raise RuntimeError(f"Kling API 429 after {max_retries} retries: {err_detail}")
+                raise RuntimeError(f"Kling API 429 after {max_retries} retries: {err_msg}")
             resp.raise_for_status()
             return resp.json()
 
