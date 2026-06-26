@@ -74,9 +74,11 @@ class KlingClient:
         negative_prompt: str = "",
         model: str = "kling-v3",
         aspect_ratio: str = "9:16",
+        max_retries: int = 5,
     ) -> dict:
         """
         Generate a video from text prompt using Kling AI.
+        Retries on 429 rate-limit with exponential backoff.
 
         Args:
             prompt: The video description (in English, detailed)
@@ -85,6 +87,7 @@ class KlingClient:
             negative_prompt: What to avoid in the video
             model: Model version (kling-v3 recommended)
             aspect_ratio: "9:16" for vertical Shorts, "16:9" for landscape
+            max_retries: Max retries on 429 rate-limit
 
         Returns:
             Response dict with task_id for status polling
@@ -106,9 +109,19 @@ class KlingClient:
 
         headers = self._get_headers("POST", path, body)
 
-        resp = requests.post(url, headers=headers, data=body, timeout=60)
-        resp.raise_for_status()
-        return resp.json()
+        # Retry on 429 with exponential backoff
+        for attempt in range(max_retries):
+            resp = requests.post(url, headers=headers, data=body, timeout=60)
+            if resp.status_code == 429:
+                wait = min(2 ** attempt * 5, 120)  # 5s, 10s, 20s, 40s, 80s
+                print(f"    ⏳ Rate limited (429), retrying in {wait}s... (attempt {attempt+1}/{max_retries})")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+
+        # All retries exhausted
+        raise RuntimeError(f"Kling API rate limited after {max_retries} retries")
 
     def get_task_status(self, task_id: str) -> dict:
         """Poll for video generation task status."""

@@ -74,6 +74,11 @@ class ShortsPipeline:
         for i, concept in enumerate(concepts, 1):
             print(f"\n  [{i}/{len(concepts)}] {concept['title']}")
             try:
+                # Rate limiting: delay between requests (Kling: ~5-10 req/min)
+                if i > 1:
+                    delay = 15  # 15 seconds between each video request
+                    print(f"    ⏱  Waiting {delay}s to respect rate limits...")
+                    time.sleep(delay)
                 # 1. Generate video with Kling (9:16, 5 seconds)
                 response = kling.text_to_video(
                     prompt=concept["kling_prompt"],
