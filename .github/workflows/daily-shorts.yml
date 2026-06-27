@@ -5,6 +5,10 @@ on:
   # schedule:
   #   - cron: '0 0 * * *'
   workflow_dispatch:  # 僅手動觸發
+    inputs:
+      videos:
+        description: 'Number of videos to generate (YouTube quota ≈ 6 uploads/day max)'
+        default: '6'
 
 env:
   KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
@@ -13,7 +17,7 @@ env:
   YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LLM_MODEL: gpt-4o
-  VIDEOS_PER_DAY: 10
+  VIDEOS_PER_DAY: ${{ github.event.inputs.videos || '6' }}
 
 jobs:
   generate-and-upload:
