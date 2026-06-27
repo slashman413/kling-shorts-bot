@@ -4,9 +4,7 @@ Takes a Kling-generated video, scales to 720x1280 (Shorts HD),
 and creates a seamless loop by repeating N times.
 """
 
-import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 
@@ -40,15 +38,6 @@ class VideoLooper:
         width, height = self._get_resolution(input_path)
         print(f"[Looper] Input: {width}x{height}, {duration:.1f}s, repeating {self.repeats}x")
 
-        # Build filter complex:
-        # 1. Scale to 720x1280 (pad to maintain aspect ratio)
-        # 2. Loop the video N times
-        filter_complex = (
-            "[0:v]scale=720:1280:force_original_aspect_ratio=decrease,"
-            "pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black[v];"
-            "[0:a]aloop=loop=-1:size=2*44100[a]"
-        )
-
         # Calculate total duration
         total_duration = duration * self.repeats
 
@@ -63,7 +52,8 @@ class VideoLooper:
                 "-y",
                 "-stream_loop", str(self.repeats - 1),  # repeat N-1 extra times
                 "-i", input_path,
-                "-filter_complex",
+                # -vf (not -filter_complex) so ffmpeg still auto-maps the source audio when present
+                "-vf",
                 "scale=720:1280:force_original_aspect_ratio=decrease,"
                 "pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=black",
                 "-c:v", "libx264",
