@@ -216,9 +216,9 @@ class PromptGenerator:
         self.model = os.environ.get("LLM_MODEL", "gpt-4o")
         self.use_llm = True
 
-    def _load_trending_weights(self) -> dict:
-        """Load trending analysis and return {hook_base: weight} mapping.
-        Also stashes trend_direction + sample viral titles for the LLM prompt."""
+    def _load_trend_analysis(self) -> dict:
+        """Load the full trending-analysis dict (or {} if absent); __init__ derives
+        category_weights from it. Also stashes trend_direction + sample viral titles."""
         self.trend_direction = ""
         self.trend_samples = []
         trend_file = Path(__file__).parent.parent / "data" / "trending_analysis.json"
@@ -240,7 +240,8 @@ class PromptGenerator:
                 # Show top weighted categories
                 for cat, w in sorted(weights.items(), key=lambda x: x[1], reverse=True)[:5]:
                     print(f"[Trend]   {w:.1f}x  {cat}")
-            return weights
+            return data
+
         except (json.JSONDecodeError, KeyError, IOError) as e:
             print(f"[Trend] Could not load trend data: {e}")
             return {}
