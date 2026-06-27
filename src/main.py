@@ -24,7 +24,7 @@ class ShortsPipeline:
 
     def __init__(self):
         self.prompt_gen = PromptGenerator()
-        self.looper = VideoLooper(repeats=4)  # 4x loop = ~20s total
+        self.looper = VideoLooper(repeats=2)  # 5s clip ×2 = ~10s loop
         self.config = self._load_config()
         self.videos_per_day = int(
             os.environ.get("VIDEOS_PER_DAY", 
