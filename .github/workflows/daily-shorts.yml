@@ -18,6 +18,11 @@ env:
   LLM_MODEL: gpt-4o
   VIDEOS_PER_DAY: ${{ github.event.inputs.videos || '2' }}
 
+# don't let a manual dispatch collide with the scheduled run (avoids double uploads / wasted quota)
+concurrency:
+  group: daily-shorts
+  cancel-in-progress: false
+
 jobs:
   generate-and-upload:
     name: 生成 Shorts 並上傳 YouTube
