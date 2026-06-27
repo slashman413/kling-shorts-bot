@@ -1,14 +1,13 @@
 name: 🎬 每日 Shorts 自動生產線
 
 on:
-  # ⏸️ 已暫停每日排程 - 等待優化
-  # schedule:
-  #   - cron: '0 0 * * *'
-  workflow_dispatch:  # 僅手動觸發
+  schedule:
+    - cron: '11 0 * * *'   # 00:11 UTC = 08:11 台灣，每日
+  workflow_dispatch:  # 也可手動觸發
     inputs:
       videos:
         description: 'Number of videos to generate (YouTube quota ≈ 6 uploads/day max)'
-        default: '6'
+        default: '2'
 
 env:
   KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
@@ -17,7 +16,7 @@ env:
   YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   LLM_MODEL: gpt-4o
-  VIDEOS_PER_DAY: ${{ github.event.inputs.videos || '6' }}
+  VIDEOS_PER_DAY: ${{ github.event.inputs.videos || '2' }}
 
 jobs:
   generate-and-upload:
