@@ -201,8 +201,9 @@ class PromptGenerator:
     """Generate viral Shorts prompts using 25 templates or LLM."""
 
     def __init__(self):
-        # Load trending analysis for dynamic template weighting
-        self.trend_weights = self._load_trending_weights()
+        # Load trending analysis (drives BOTH the template path and the LLM prompt)
+        self.trend_analysis = self._load_trend_analysis()
+        self.trend_weights = self.trend_analysis.get("category_weights", {})
 
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
@@ -216,7 +217,10 @@ class PromptGenerator:
         self.use_llm = True
 
     def _load_trending_weights(self) -> dict:
-        """Load trending analysis and return {hook_base: weight} mapping."""
+        """Load trending analysis and return {hook_base: weight} mapping.
+        Also stashes trend_direction + sample viral titles for the LLM prompt."""
+        self.trend_direction = ""
+        self.trend_samples = []
         trend_file = Path(__file__).parent.parent / "data" / "trending_analysis.json"
         if not trend_file.exists():
             return {}
@@ -225,6 +229,10 @@ class PromptGenerator:
             with open(trend_file, encoding="utf-8") as f:
                 data = json.load(f)
 
+            self.trend_direction = data.get("trend_direction", "")
+            self.trend_samples = [
+                t.get("title", "") for t in data.get("sample_viral_titles", []) if t.get("title")
+            ]
             weights = data.get("category_weights", {})
             if weights:
                 print(f"[Trend] Loaded {len(weights)} category weights from trending analysis")
@@ -249,33 +257,59 @@ class PromptGenerator:
           - hook_type: Type of psychological hook
         """
         if self.use_llm:
-            return self._generate_with_llm(count)
-        else:
-            return self._generate_from_templates(count)
+            try:
+                concepts = self._generate_with_llm(count)
+                # keep only well-formed concepts (must have a prompt + title)
+                concepts = [
+                    c for c in (concepts or [])
+                    if isinstance(c, dict) and c.get("kling_prompt") and c.get("title")
+                ]
+                if concepts:
+                    return concepts
+                print("[PromptGen] LLM returned no usable concepts; falling back to templates.")
+            except Exception as e:  # noqa: BLE001 — any LLM/parse failure must not kill the run
+                print(f"[PromptGen] LLM generation failed ({e}); falling back to templates.")
+        return self._generate_from_templates(count)
 
     def _generate_with_llm(self, count: int) -> list[dict]:
-        """Use GPT-4o to generate viral concepts based on the hydraulic press hook."""
-        system_prompt = """You are an expert YouTube Shorts content strategist specializing in 
-        viral AI-generated videos. Your specialty is the "satisfying destruction" genre 
-        (hydraulic press, crushing, destroying things) which gets 100M+ views.
+        """Use the LLM to generate viral concepts, biased by the weekly trend analysis."""
+        system_prompt = """You are an expert YouTube Shorts content strategist for viral
+        AI-generated videos across the top "oddly satisfying / ASMR" genres — satisfying
+        destruction (hydraulic press, crushing), cutting/slicing (soap, kinetic sand),
+        food ASMR (cheese pull, sizzling, sauce pour), fluid/paint art, ferrofluid, ice,
+        water droplets, transformations and time-lapses. These regularly get 100M+ views.
 
         For each video concept, provide a JSON object with:
         - title: Catchy Shorts title (under 60 chars)
         - kling_prompt: Detailed English prompt for Kling AI text-to-video (50-100 words, describe the scene, lighting, camera movement, textures)
         - description: YouTube description with hook text (2-3 lines)
         - tags: List of 8-10 relevant hashtags
-        - hook_type: The psychological hook (e.g., "破壞慾滿足", "壓力釋放", "強迫症治癒")
+        - hook_type: The psychological hook (e.g., "破壞慾滿足", "壓力釋放", "強迫症治癒", "食物ASMR", "視覺治癒")
 
         Rules:
         - Each concept must have a UNIQUE visual premise
-        - Focus on destruction, crushing, satisfying mechanics
+        - Span a VARIETY of the satisfying/ASMR genres above (don't only do destruction)
         - Include specific details: lighting, textures, camera angles
         - Keep videos under 10 seconds (5 is ideal)
         - Output ONLY valid JSON array, no markdown"""
 
-        user_prompt = f"""Generate {count} viral YouTube Shorts video concepts based on the 
-        hydraulic press/destruction/satisfying genre. Each should be a unique visual concept 
-        that would trend on Shorts.
+        # Bias the LLM toward what's actually trending this week (from the weekly scraper).
+        trend_hint = ""
+        if self.trend_weights:
+            top = sorted(self.trend_weights.items(), key=lambda x: x[1], reverse=True)[:5]
+            cats = ", ".join(f"{k} ({v}x)" for k, v in top)
+            trend_hint = (
+                f"\n\nThis week's TRENDING categories (weight = how hot; favour the higher ones): {cats}."
+            )
+            if getattr(self, "trend_direction", ""):
+                trend_hint += f"\nOverall trend direction: {self.trend_direction}."
+            if getattr(self, "trend_samples", []):
+                sample_list = "\n".join(f"- {t}" for t in self.trend_samples[:8])
+                trend_hint += f"\nRecent real viral Shorts titles for inspiration (do NOT copy verbatim):\n{sample_list}"
+
+        user_prompt = f"""Generate {count} viral YouTube Shorts video concepts in the
+        oddly-satisfying / ASMR space. Each should be a unique visual concept that would
+        trend on Shorts, weighted toward the trending categories below.{trend_hint}
 
         Follow this format exactly:
         [
@@ -412,9 +446,9 @@ class PromptGenerator:
             for key, value in filled_data.items():
                 prompt = prompt.replace(f"{{{key}}}", str(value))
 
-            # Generate title based on hook type
+            # Generate title based on hook type (use filled_data — `data` above is a stale loop var)
             hook = template["hook"]
-            title = self._generate_title(hook, data)
+            title = self._generate_title(hook, filled_data)
 
             # All prompts get vertical Shorts emphasis
             if "vertical 9:16" not in prompt:
