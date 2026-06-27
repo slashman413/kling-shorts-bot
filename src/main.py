@@ -129,7 +129,7 @@ class ShortsPipeline:
         if result.returncode != 0:
             raise RuntimeError(f"Download failed: {result.stderr}")
 
-    def step3_upload_videos(self, video_results: list[dict]) -> list[str]:
+    def step3_upload_videos(self, video_results: list[dict]) -> list[dict]:
         """Step 3: Upload looped Shorts to YouTube."""
         print(f"\n{'='*60}")
         print(f"📤 Step 3: Uploading looping Shorts to YouTube...")
@@ -148,7 +148,7 @@ class ShortsPipeline:
             print("  No videos to upload.")
             return []
 
-        video_ids = []
+        uploads = []
         for i, result in enumerate(to_upload, 1):
             concept = result["concept"]
             print(f"\n  [{i}/{len(to_upload)}] {concept['title']}")
@@ -162,11 +162,12 @@ class ShortsPipeline:
                     privacy_status="public",
                 )
                 if vid:
-                    video_ids.append(vid)
+                    # keep each video_id paired with its own concept (no index guessing later)
+                    uploads.append({"video_id": vid, "concept": concept})
             except Exception as e:
                 print(f"    ❌ Upload failed: {e}")
 
-        return video_ids
+        return uploads
 
     def run(self):
         """Run the full pipeline."""
@@ -181,26 +182,21 @@ class ShortsPipeline:
             return
 
         video_results = self.step2_generate_videos(concepts)
-        video_ids = self.step3_upload_videos(video_results)
+        uploads = self.step3_upload_videos(video_results)
 
-        # Build structured summary
-        upload_details = []
-        completed = [r for r in video_results if r.get("status") == "completed"]
-        for i, vid in enumerate(video_ids):
-            if i < len(completed):
-                c = completed[i].get("concept", {})
-                upload_details.append({
-                    "video_id": vid,
-                    "url": f"https://youtube.com/watch?v={vid}",
-                    "title": c.get("title", "Untitled"),
-                    "hook_type": c.get("hook_type", "Unknown"),
-                })
+        # Build structured summary — each upload already carries its own concept
+        upload_details = [{
+            "video_id": u["video_id"],
+            "url": f"https://youtube.com/watch?v={u['video_id']}",
+            "title": u["concept"].get("title", "Untitled"),
+            "hook_type": u["concept"].get("hook_type", "Unknown"),
+        } for u in uploads]
 
         summary = {
             "date": time.strftime("%Y-%m-%d %H:%M:%S"),
             "total_concepts": len(concepts),
             "total_videos_completed": sum(1 for r in video_results if r.get("status") == "completed"),
-            "total_uploaded": len(video_ids),
+            "total_uploaded": len(uploads),
             "channel_url": "https://youtube.com/@GentleSoul666",
             "uploads": upload_details,
         }
@@ -216,7 +212,7 @@ class ShortsPipeline:
         print(f"{'='*60}")
         print(f"  Concepts generated: {len(concepts)}")
         print(f"  Videos + Looped:    {summary['total_videos_completed']}")
-        print(f"  Uploaded to YouTube: {len(video_ids)}")
+        print(f"  Uploaded to YouTube: {len(uploads)}")
         print(f"  Channel: https://youtube.com/@GentleSoul666")
         for detail in upload_details:
             print(f"    → {detail['title']}")
