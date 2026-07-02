@@ -8,6 +8,10 @@ on:
 env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   scrape-trends:
     name: 爬取 YouTube Shorts 趨勢
@@ -64,3 +68,14 @@ jobs:
           else
             echo "Result: ❌ No data"
           fi
+
+  notify-failure:
+    needs: [scrape-trends]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord failure alert
+        run: >-
+          curl -sf -H "Content-Type: application/json"
+          -d '{"content": "\ud83d\udd34 ${{ github.repository }} \u2014 ${{ github.workflow }} \u6392\u7a0b\u5931\u6557 \u00b7 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+          "${{ secrets.DISCORD_WEBHOOK }}" || true
