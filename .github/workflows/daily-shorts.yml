@@ -95,3 +95,14 @@ jobs:
           cat data/trending_analysis.json 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "No trend data available"
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  notify-failure:
+    needs: [generate-and-upload, fallback]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord failure alert
+        run: >-
+          curl -sf -H "Content-Type: application/json"
+          -d '{"content": "\ud83d\udd34 ${{ github.repository }} \u2014 ${{ github.workflow }} \u6392\u7a0b\u5931\u6557 \u00b7 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+          "${{ secrets.DISCORD_WEBHOOK }}" || true
